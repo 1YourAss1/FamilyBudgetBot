@@ -8,6 +8,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
 public class TelegramBot {
@@ -15,6 +19,7 @@ public class TelegramBot {
     private static final int TIMEOUT = 10;
     private final String token;
     private final int[] user_id_array;
+    private BudgetDB budgetDB = null;
 
     TelegramBot(String token, int[] user_id) {
         this.token = token;
@@ -49,6 +54,16 @@ public class TelegramBot {
             System.exit(0);
         }
         System.out.println("-----------------------------------");
+        System.out.println("Connect to Budget Database");
+        budgetDB = new BudgetDB();
+        if (budgetDB.connect()) {
+            System.out.println("Connected to database");
+        } else {
+            budgetDB.close();
+            System.err.println("Error: cannot connect to database");
+            System.exit(0);
+        }
+        System.out.println("-----------------------------------");
         // Start
         System.out.println("Start getting updates");
         int offset = 0;
@@ -60,7 +75,6 @@ public class TelegramBot {
                                 + "&timeout=" + TIMEOUT))
                         .GET()
                         .build();
-                System.out.println("Start request: " + request);
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
                 JSONObject jsonResponse = new JSONObject(response.body());
                 JSONArray result = (JSONArray) jsonResponse.get("result");
@@ -72,7 +86,8 @@ public class TelegramBot {
                     JSONObject from = (JSONObject) message.get("from");
                     int from_id = from.getInt("id");
                     if (IntStream.of(user_id_array).anyMatch(user_id -> user_id == from_id)) {
-                        System.out.println(from_id + ": " + message.get("text"));
+                        System.out.println(from_id + ": " + message.getString("text"));
+                        writeData(message.getString("text"), from_id);
                     } else {
                         sendMessage(from_id, "Доступ запрещен");
                     }
@@ -81,6 +96,27 @@ public class TelegramBot {
                 System.err.println("ERROR: " + e.getMessage());
             }
         }
+    }
+
+    private void writeData(String text, int from_id) {
+        Map<String, String> expense = parseMessage(text);
+        if (expense != null) {
+            budgetDB.insertExpense(expense, from_id, text);
+        } else {
+            sendMessage(from_id, "Неверный формат. Пример нужного формата: \n1000 продукты");
+        }
+    }
+
+
+    private Map<String, String> parseMessage(String text) {
+        Map<String, String> result = new HashMap<>();
+        Matcher matcher = Pattern.compile("([\\d ]+)(.*)").matcher(text);
+        if (matcher.find()) {
+            result.put("amount", matcher.group(1).trim());
+            result.put("category", matcher.group(2).trim());
+            return result;
+        }
+        return null;
     }
 
     private void sendMessage(int chat_id, String text) {
