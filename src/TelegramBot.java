@@ -103,6 +103,8 @@ public class TelegramBot {
             switch (text.split(" ")[0]) {
                 case "/today" -> sendMessage(from_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
                 case "/month" -> sendMessage(from_id, "Расходы за месяц: " + budgetDB.getMonthStatistic() + " руб.");
+                case "/categories" -> sendMessage(from_id, "Категории:\n" + budgetDB.getAllCategories());
+                case "/expenses" -> sendMessage(from_id, "Последние расходы:\n" + budgetDB.getLastExpenses());
                 default -> writeData(message.getString("text"), from_id);
             }
         } else {
@@ -113,9 +115,10 @@ public class TelegramBot {
     private void writeData(String text, int from_id) {
         Map<String, String> expense = parseMessage(text);
         if (expense != null) {
-            if (budgetDB.insertExpense(expense, from_id, text)) {
+            expense = budgetDB.insertExpense(expense, from_id, text);
+            if (expense != null) {
                 for (int user_id : user_id_array) {
-                    sendMessage(user_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
+                    sendMessage(user_id, "Добавлен расход: " + expense.get("amount") + " руб. на " + expense.get("category"));
                 }
             }
         } else {
@@ -127,7 +130,7 @@ public class TelegramBot {
     private Map<String, String> parseMessage(String text) {
         Map<String, String> result = new HashMap<>();
         Matcher matcher = Pattern.compile("([\\d ]+)(.*)").matcher(text);
-        if (matcher.find()) {
+        if (matcher.find() && Integer.parseInt(matcher.group(1).trim()) > 0 && !matcher.group(2).trim().isEmpty()) {
             result.put("amount", matcher.group(1).trim());
             result.put("category", matcher.group(2).trim());
             return result;
