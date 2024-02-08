@@ -101,7 +101,9 @@ public class TelegramBot {
     private void writeData(String text, int from_id) {
         Map<String, String> expense = parseMessage(text);
         if (expense != null) {
-            budgetDB.insertExpense(expense, from_id, text);
+            if (budgetDB.insertExpense(expense, from_id, text)) {
+                sendMessage(from_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
+            }
         } else {
             sendMessage(from_id, "Неверный формат. Пример нужного формата: \n1000 продукты");
         }
@@ -120,6 +122,10 @@ public class TelegramBot {
     }
 
     private void sendMessage(int chat_id, String text) {
+        if (text == null || text.isEmpty()) {
+            System.err.println("text in sendMessage is null or empty");
+            return;
+        }
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(URL_API_TELEGRAM + token + "/sendMessage"
                         + "?chat_id=" + chat_id

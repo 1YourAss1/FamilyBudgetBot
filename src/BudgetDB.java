@@ -1,5 +1,7 @@
 import java.sql.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -9,9 +11,10 @@ public class BudgetDB {
 
     public boolean connect() {
         try {
+            Class.forName("org.sqlite.JDBC");
             conn = DriverManager.getConnection(URL);
             return true;
-        } catch (SQLException e) {
+        } catch (SQLException | ClassNotFoundException e) {
             System.err.println(e.getMessage());
         }
         return false;
@@ -19,26 +22,36 @@ public class BudgetDB {
 
     public void close() {
         try {
-            conn.close();
+            if (conn != null) {
+                conn.close();
+            }
         } catch (SQLException e) {
             System.err.println(e.getMessage());
         }
     }
 
-    public void insertExpense(Map<String, String> expense, int user_id, String rawText) {
+    public boolean insertExpense(Map<String, String> expense, int user_id, String rawText) {
         try {
             String sql = "INSERT INTO expense (amount, user_id, created, category_codename, raw_text) " +
                     "VALUES (?, ?, ?, ?, ?);";
             PreparedStatement preparedStatement = conn.prepareStatement(sql);
             preparedStatement.setInt(1, Integer.parseInt(expense.get("amount")));
             preparedStatement.setInt(2, user_id);
-            preparedStatement.setDate(3, new Date(System.currentTimeMillis()));
+            preparedStatement.setString(3,getDataString(new Date()));
             preparedStatement.setString(4, getCategory(expense.get("category")));
             preparedStatement.setString(5, rawText);
             preparedStatement.executeUpdate();
+            return true;
         } catch (SQLException e) {
             System.err.println(e.getMessage());
         }
+        return false;
+    }
+
+    private String getDataString(Date date) {
+        String pattern = "yyyy-MM-dd hh:mm:ss";
+        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
+        return simpleDateFormat.format(date);
     }
 
     private String getCategory(String categoryFromText) {
@@ -58,6 +71,20 @@ public class BudgetDB {
             System.err.println(e.getMessage());
         }
         return "other";
+    }
+
+    public String getTodayStatistic() {
+        try {
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT sum(amount) FROM expense WHERE date(created)=date('now', 'localtime');");
+            if (rs.next()) {
+                return String.valueOf(rs.getInt(1));
+            }
+            rs.close();
+        } catch (SQLException e) {
+            System.err.println(e.getMessage());
+        }
+        return null;
     }
 
 }
