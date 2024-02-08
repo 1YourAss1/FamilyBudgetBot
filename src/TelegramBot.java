@@ -81,15 +81,11 @@ public class TelegramBot {
                 if (!result.isEmpty()) {
                     // Recalculate offset
                     offset = (int) ((JSONObject) result.get(0)).get("update_id") + 1;
-                    // Check user id
-                    JSONObject message = (JSONObject) ((JSONObject) result.get(0)).get("message");
-                    JSONObject from = (JSONObject) message.get("from");
-                    int from_id = from.getInt("id");
-                    if (IntStream.of(user_id_array).anyMatch(user_id -> user_id == from_id)) {
-                        System.out.println(from_id + ": " + message.getString("text"));
-                        writeData(message.getString("text"), from_id);
-                    } else {
-                        sendMessage(from_id, "Доступ запрещен");
+                    // Handle update
+                    JSONObject update = (JSONObject) result.get(0);
+                    if (update.has("message")) {
+                        JSONObject message = (JSONObject) update.get("message");
+                        handleMessage(message);
                     }
                 }
             } catch (IOException | InterruptedException e) {
@@ -98,11 +94,29 @@ public class TelegramBot {
         }
     }
 
+    private void handleMessage(JSONObject message) {
+        JSONObject from = (JSONObject) message.get("from");
+        int from_id = from.getInt("id");
+        if (IntStream.of(user_id_array).anyMatch(user_id -> user_id == from_id)) {
+            String text = message.getString("text");
+            System.out.println(from_id + ": " + text);
+            switch (text.split(" ")[0]) {
+                case "/today" -> sendMessage(from_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
+                case "/month" -> sendMessage(from_id, "Расходы за месяц: " + budgetDB.getMonthStatistic() + " руб.");
+                default -> writeData(message.getString("text"), from_id);
+            }
+        } else {
+            sendMessage(from_id, "Доступ запрещен");
+        }
+    }
+
     private void writeData(String text, int from_id) {
         Map<String, String> expense = parseMessage(text);
         if (expense != null) {
             if (budgetDB.insertExpense(expense, from_id, text)) {
-                sendMessage(from_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
+                for (int user_id : user_id_array) {
+                    sendMessage(user_id, "Расходы сегодня: " + budgetDB.getTodayStatistic() + " руб.");
+                }
             }
         } else {
             sendMessage(from_id, "Неверный формат. Пример нужного формата: \n1000 продукты");

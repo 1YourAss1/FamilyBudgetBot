@@ -1,7 +1,8 @@
 import java.sql.*;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +38,7 @@ public class BudgetDB {
             PreparedStatement preparedStatement = conn.prepareStatement(sql);
             preparedStatement.setInt(1, Integer.parseInt(expense.get("amount")));
             preparedStatement.setInt(2, user_id);
-            preparedStatement.setString(3,getDataString(new Date()));
+            preparedStatement.setString(3,getDataString(LocalDateTime.now()));
             preparedStatement.setString(4, getCategory(expense.get("category")));
             preparedStatement.setString(5, rawText);
             preparedStatement.executeUpdate();
@@ -48,10 +49,10 @@ public class BudgetDB {
         return false;
     }
 
-    private String getDataString(Date date) {
-        String pattern = "yyyy-MM-dd hh:mm:ss";
-        SimpleDateFormat simpleDateFormat = new SimpleDateFormat(pattern);
-        return simpleDateFormat.format(date);
+    private String getDataString(LocalDateTime date) {
+        String pattern = "yyyy-MM-dd HH:mm:ss";
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
+        return date.format(formatter);
     }
 
     private String getCategory(String categoryFromText) {
@@ -77,6 +78,20 @@ public class BudgetDB {
         try {
             Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT sum(amount) FROM expense WHERE date(created)=date('now', 'localtime');");
+            if (rs.next()) {
+                return String.valueOf(rs.getInt(1));
+            }
+            rs.close();
+        } catch (SQLException e) {
+            System.err.println(e.getMessage());
+        }
+        return null;
+    }
+
+    public String getMonthStatistic() {
+        try {
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT sum(amount) FROM expense WHERE date(created)>="+ LocalDate.now().withDayOfMonth(1) + ";");
             if (rs.next()) {
                 return String.valueOf(rs.getInt(1));
             }
