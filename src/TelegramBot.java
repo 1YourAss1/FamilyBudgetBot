@@ -105,6 +105,10 @@ public class TelegramBot {
                 case "/month" -> sendMessage(from_id, "Расходы за месяц: " + budgetDB.getMonthStatistic() + " руб.");
                 case "/categories" -> sendMessage(from_id, "Категории:\n" + budgetDB.getAllCategories());
                 case "/expenses" -> sendMessage(from_id, "Последние расходы:\n" + budgetDB.getLastExpenses());
+                case String s when s.matches("/del\\d+") -> {
+                    budgetDB.deleteExpense(Integer.parseInt(s.split("/del")[1]));
+                    sendMessage(from_id,"Запись о расходе удалена");
+                }
                 default -> writeData(message.getString("text"), from_id);
             }
         } else {

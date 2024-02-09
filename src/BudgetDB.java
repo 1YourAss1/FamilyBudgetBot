@@ -55,6 +55,15 @@ public class BudgetDB {
         return null;
     }
 
+    public void deleteExpense(int row_id) {
+        try {
+            Statement stmt = conn.createStatement();
+            stmt.executeQuery("DELETE FROM expense where id=" + row_id);
+        } catch (SQLException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
     private String getDataString(LocalDateTime date) {
         String pattern = "yyyy-MM-dd HH:mm:ss";
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(pattern);
@@ -123,6 +132,7 @@ public class BudgetDB {
                         .append(rs.getString("amount"))
                         .append(" руб. на ")
                         .append(rs.getString("name"))
+                        .append(" /del").append(rs.getString("id"))
                         .append("\n");
             }
         } catch (SQLException e) {
