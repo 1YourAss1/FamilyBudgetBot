@@ -133,10 +133,14 @@ public class TelegramBot {
 
     private Map<String, String> parseMessage(String text) {
         Map<String, String> result = new HashMap<>();
-        Matcher matcher = Pattern.compile("([\\d ]+)(.*)").matcher(text);
-        if (matcher.find() && Integer.parseInt(matcher.group(1).trim()) > 0 && !matcher.group(2).trim().isEmpty()) {
+        Matcher matcher = Pattern.compile("(\\d+)(.*)").matcher(text);
+        if (matcher.find() && Integer.parseInt(matcher.group(1).trim()) > 0) {
             result.put("amount", matcher.group(1).trim());
-            result.put("category", matcher.group(2).trim());
+            if (!matcher.group(2).trim().isEmpty()) {
+                result.put("category", matcher.group(2).trim());
+            } else {
+                result.put("category", "");
+            }
             return result;
         }
         return null;
