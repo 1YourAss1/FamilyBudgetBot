@@ -1,13 +1,18 @@
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.sql.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class BudgetDB {
+    Logger logger = Logger.getLogger(BudgetDB.class.getName());
     private static final String URL = "jdbc:sqlite:budget.db";
     private Connection conn = null;
 
@@ -17,7 +22,7 @@ public class BudgetDB {
             conn = DriverManager.getConnection(URL);
             return true;
         } catch (SQLException | ClassNotFoundException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return false;
     }
@@ -28,7 +33,7 @@ public class BudgetDB {
                 conn.close();
             }
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
     }
 
@@ -50,17 +55,18 @@ public class BudgetDB {
             expense.put("category", category.get("name"));
             return expense;
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return null;
     }
 
     public void deleteExpense(int row_id) {
         try {
-            Statement stmt = conn.createStatement();
-            stmt.executeQuery("DELETE FROM expense where id=" + row_id);
+            var stmt = conn.prepareStatement("DELETE FROM expense where id=?");
+            stmt.setInt(1, row_id);
+            stmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
     }
 
@@ -87,7 +93,7 @@ public class BudgetDB {
             }
             rs.close();
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         result.put("codename", "other");
         result.put("name", "прочее");
@@ -101,8 +107,8 @@ public class BudgetDB {
             ResultSet rs = stmt.executeQuery("SELECT * FROM category;");
             while (rs.next()) {
                 result
-                        .append("* ")
-                        .append(rs.getString("name"))
+                        .append("‣ ")
+                        .append(rs.getString("name").toUpperCase())
                         .append(" (")
                         .append(rs.getString("aliases"))
                         .append((rs.getString("aliases").isEmpty()) ? "" : ", ")
@@ -111,7 +117,7 @@ public class BudgetDB {
                         .append("\n");
             }
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return result.toString();
     }
@@ -136,37 +142,64 @@ public class BudgetDB {
                         .append("\n");
             }
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return result.toString();
     }
 
-    public String getTodayStatistic() {
+    public String getTodaySum() {
         try {
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT sum(amount) FROM expense WHERE date(created)=date('now', 'localtime');");
+            ResultSet rs = stmt.executeQuery("SELECT SUM(amount) FROM expense WHERE date(created)=date('now', 'localtime');");
             if (rs.next()) {
                 return String.valueOf(rs.getInt(1));
             }
             rs.close();
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return "";
     }
 
-    public String getMonthStatistic() {
+    public String getMonthSum() {
         try {
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT sum(amount) FROM expense WHERE date(created)>="+ LocalDate.now().withDayOfMonth(1) + ";");
+            var rs = conn.createStatement().executeQuery("SELECT sum(amount) FROM expense WHERE date(created)>=date('now', 'start of month')");
             if (rs.next()) {
                 return String.valueOf(rs.getInt(1));
             }
             rs.close();
         } catch (SQLException e) {
-            System.err.println(e.getMessage());
+            logger.log(Level.SEVERE, e.getMessage(), e);
         }
         return "";
+    }
+
+
+    public JSONArray getMonthStatistic() {
+        JSONArray result = new JSONArray();
+        String query =
+                "SELECT e.category_codename, " +
+                        "c.name, " +
+                        "SUM(e.amount) AS sum, " +
+                        "100.0 * SUM(e.amount) / (SELECT SUM(amount) FROM expense WHERE date(created)>=date('now', 'start of month')) AS percentage " +
+                "FROM expense e LEFT JOIN category c ON c.codename=e.category_codename " +
+                "WHERE date(created)>=date('now', 'start of month')" +
+                "GROUP BY category_codename " +
+                "ORDER BY sum DESC;";
+        try {
+            var rs = conn.createStatement().executeQuery(query);
+            while (rs.next()) {
+                JSONObject row = new JSONObject();
+                row.put("name", rs.getString("name"));
+                row.put("percentage", rs.getFloat("percentage"));
+                row.put("sum", rs.getInt("sum"));
+                result.put(row);
+            }
+            rs.close();
+        } catch (SQLException e) {
+            logger.log(Level.SEVERE, e.getMessage(), e);
+        }
+        return result;
     }
 
 }
