@@ -11,5 +11,6 @@
     <orderEntry type="library" name="xerial.sqlite.jdbc" level="project" />
     <orderEntry type="library" name="telegram.telegrambots" level="project" />
     <orderEntry type="library" name="jfree.jfreechart" level="project" />
+    <orderEntry type="library" name="quartz.scheduler" level="project" />
   </component>
 </module>

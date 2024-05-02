@@ -76,7 +76,7 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
                     case "/backup" -> sendBackup(from_id);
                     case String s when s.matches("/del\\d+") -> {
                         budgetDB.deleteExpense(Integer.parseInt(s.split("/del")[1]));
-                        sendMessage(from_id,"Запись о расходе удалена");
+                        sendMessage(from_id, "Запись о расходе удалена");
                     }
                     default -> writeData(from_id, text);
                 }
@@ -86,12 +86,24 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         }
     }
 
+    public void sendDailyReminder() {
+        for (String user_id : user_id_array) {
+            sendMessage(user_id, "Заполни расходы за сегодня \uD83D\uDCB8");
+        }
+    }
+
+    public void sendMonthStatisticToEveryone() {
+        for (String user_id : user_id_array) {
+            sendMonthStatistic(user_id);
+        }
+    }
+
     private String getMonth() {
         LocalDate today = LocalDate.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("LLLL", Locale.forLanguageTag("ru"));
         return formatter.format(today).toUpperCase()
                 + " (" + LocalDate.now().withDayOfMonth(1).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-                + " - " +LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) +")";
+                + " - " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) + ")";
     }
 
     private void writeData(String from_id, String text) {
@@ -127,6 +139,7 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
 
     private void sendMessage(String chat_id, String text) {
         SendMessage sendMessage = new SendMessage();
+        sendMessage.setParseMode("HTML");
         sendMessage.setChatId(chat_id);
         sendMessage.setText(text);
 
@@ -156,7 +169,7 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         }
 
         String month = getMonth();
-        JFreeChart monthStatisticPieChart = ChartFactory.createPieChart3D(month, pieDataset,false, false, false);
+        JFreeChart monthStatisticPieChart = ChartFactory.createPieChart3D(month, pieDataset, false, false, false);
         monthStatisticPieChart.setBackgroundPaint(new Color(232, 232, 255));
 
         TextTitle title = monthStatisticPieChart.getTitle();
