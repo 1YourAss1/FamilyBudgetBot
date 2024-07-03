@@ -1,3 +1,5 @@
+package ru.familybudget;
+
 import org.quartz.*;
 import org.quartz.impl.StdSchedulerFactory;
 import org.telegram.telegrambots.meta.TelegramBotsApi;

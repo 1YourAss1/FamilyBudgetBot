@@ -1,3 +1,5 @@
+package ru.familybudget;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
