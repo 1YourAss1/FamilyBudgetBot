@@ -1,5 +1,10 @@
 package ru.familybudget;
 
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.labels.StandardPieSectionLabelGenerator;
@@ -18,10 +23,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -38,14 +40,16 @@ import java.util.regex.Pattern;
 
 public class FamilyBudgetBot extends TelegramLongPollingBot {
     Logger logger = Logger.getLogger(FamilyBudgetBot.class.getName());
+    private static final String CATEGORY = "category";
+    private static final String AMOUNT = "amount";
     private final String botUsername;
-    private final String[] user_id_array;
+    private final String[] userIdArray;
     private final BudgetDB budgetDB;
 
-    FamilyBudgetBot(String botToken, String botUsername, String user_id_array) {
+    FamilyBudgetBot(String botToken, String botUsername, String userIdArray) {
         super(botToken);
         this.botUsername = botUsername;
-        this.user_id_array = user_id_array.split(",");
+        this.userIdArray = userIdArray.split(",");
 
         logger.info("Connect to Budget Database");
         budgetDB = new BudgetDB();
@@ -66,36 +70,37 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
-            String from_id = update.getMessage().getChatId().toString();
-            if (Arrays.asList(user_id_array).contains(from_id)) {
+            String fromId = update.getMessage().getChatId().toString();
+            if (Arrays.asList(userIdArray).contains(fromId)) {
                 String text = update.getMessage().getText();
-                logger.info("Handle message from " + from_id + ": " + text);
+                logger.info("Handle message from " + fromId + ": " + text);
                 switch (text.split(" ")[0]) {
-                    case "/today" -> sendMessage(from_id, "Расходы сегодня: " + budgetDB.getTodaySum() + " руб.");
-                    case "/month" -> sendMonthStatistic(from_id);
-                    case "/categories" -> sendMessage(from_id, "Категории:\n" + budgetDB.getAllCategories());
-                    case "/expenses" -> sendMessage(from_id, "Последние расходы:\n" + budgetDB.getLastExpenses());
-                    case "/backup" -> sendBackup(from_id);
+                    case "/today" -> sendMessage(fromId, "Расходы сегодня: " + budgetDB.getTodaySum() + " руб.");
+                    case "/month" -> sendMonthStatistic(fromId);
+                    case "/categories" -> sendMessage(fromId, "Категории:\n" + budgetDB.getAllCategories());
+                    case "/expenses" -> sendMessage(fromId, "Последние расходы:\n" + budgetDB.getLastExpenses());
+                    case "/backup" -> sendBackup(fromId);
+                    case "/excel" -> sendExcel(fromId);
                     case String s when s.matches("/del\\d+") -> {
                         budgetDB.deleteExpense(Integer.parseInt(s.split("/del")[1]));
-                        sendMessage(from_id, "Запись о расходе удалена");
+                        sendMessage(fromId, "Запись о расходе удалена");
                     }
-                    default -> writeData(from_id, text);
+                    default -> writeData(fromId, text);
                 }
             } else {
-                sendMessage(from_id, "Доступ запрещен");
+                sendMessage(fromId, "Доступ запрещен");
             }
         }
     }
 
     public void sendDailyReminder() {
-        for (String user_id : user_id_array) {
+        for (String user_id : userIdArray) {
             sendMessage(user_id, "Заполни расходы за сегодня \uD83D\uDCB8");
         }
     }
 
     public void sendMonthStatisticToEveryone() {
-        for (String user_id : user_id_array) {
+        for (String user_id : userIdArray) {
             sendMonthStatistic(user_id);
         }
     }
@@ -108,19 +113,19 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
                 + " - " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) + ")";
     }
 
-    private void writeData(String from_id, String text) {
+    private void writeData(String fromId, String text) {
         Map<String, String> expense = parseMessage(text);
         if (!expense.isEmpty()) {
-            expense = budgetDB.insertExpense(expense, Integer.parseInt(from_id), text);
+            expense = budgetDB.insertExpense(expense, Integer.parseInt(fromId), text);
             if (expense != null) {
-                for (String user_id : user_id_array) {
+                for (String user_id : userIdArray) {
                     sendMessage(user_id,
-                            "Добавлен расход: " + expense.get("amount") + " руб. на " + expense.get("category")
+                            "Добавлен расход: " + expense.get("amount") + " руб. на " + expense.get(CATEGORY)
                                     + "\nРасходы сегодня: " + budgetDB.getTodaySum() + " руб.");
                 }
             }
         } else {
-            sendMessage(from_id, "Неверный формат. Пример нужного формата: \n1000 продукты");
+            sendMessage(fromId, "Неверный формат. Пример нужного формата: \n1000 продукты");
         }
     }
 
@@ -130,19 +135,19 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         if (matcher.find() && Integer.parseInt(matcher.group(1).trim()) > 0) {
             result.put("amount", matcher.group(1).trim());
             if (!matcher.group(2).trim().isEmpty()) {
-                result.put("category", matcher.group(2).trim());
+                result.put(CATEGORY, matcher.group(2).trim());
             } else {
-                result.put("category", "");
+                result.put(CATEGORY, "");
             }
             return result;
         }
         return result;
     }
 
-    private void sendMessage(String chat_id, String text) {
+    private void sendMessage(String chatId, String text) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setParseMode("HTML");
-        sendMessage.setChatId(chat_id);
+        sendMessage.setChatId(chatId);
         sendMessage.setText(text);
 
         try {
@@ -152,9 +157,9 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         }
     }
 
-    private void sendMonthStatistic(String chat_id) {
+    private void sendMonthStatistic(String chatId) {
         SendPhoto sendPhoto = new SendPhoto();
-        sendPhoto.setChatId(chat_id);
+        sendPhoto.setChatId(chatId);
 
         JSONArray statisticJSON = budgetDB.getMonthStatistic();
         DefaultPieDataset pieDataset = new DefaultPieDataset();
@@ -181,7 +186,6 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         PiePlot3D plot = (PiePlot3D) monthStatisticPieChart.getPlot();
         plot.setForegroundAlpha(0.6f);
         plot.setLabelGenerator(new StandardPieSectionLabelGenerator("{0}: {1}%"));
-//        plot.setLabelGenerator(null);
         plot.setLabelBackgroundPaint(null);
         plot.setBackgroundPaint(null);
         plot.setOutlineVisible(false);
@@ -200,12 +204,12 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
 
     }
 
-    private void sendBackup(String chat_id) {
+    private void sendBackup(String chatId) {
         File backup = backupDB();
         if (backup != null) {
-            sendDocument(chat_id, backup);
+            sendDocument(chatId, backup);
         } else {
-            sendMessage(chat_id, "Ошибка создания резервной копии базы данных!");
+            sendMessage(chatId, "Ошибка создания резервной копии базы данных!");
         }
 
     }
@@ -213,17 +217,13 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
     private File backupDB() {
         // Check backup folder
         File backupDir = new File("backup");
-        if (!backupDir.exists()) {
-            if (!backupDir.mkdir()) {
-                return null;
-            }
-        }
+        if (!backupDir.exists() && !backupDir.mkdir()) return null;
+
         // Create database backup
         Path source = Paths.get("budget.db");
         Path target = Paths.get(backupDir.getPath()
                 + File.separator
-                + "budget.db_"
-                + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
+                + "budget_%s.db".formatted(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))));
         try {
             Files.copy(source, target);
         } catch (IOException e) {
@@ -232,9 +232,44 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
         return target.toFile();
     }
 
-    private void sendDocument(String chat_id, File document) {
+    private void sendExcel(String fromId) {
+        try (Workbook workbook = new HSSFWorkbook()) {
+
+            Map<String, JSONArray> allExpensesMap = budgetDB.getAllExpenses();
+            if (!allExpensesMap.isEmpty()) {
+                for (Map.Entry<String, JSONArray> mounthsExpenses : allExpensesMap.entrySet()) {
+                    Sheet sheet = workbook.createSheet(mounthsExpenses.getKey());
+                    Row rowSheet = sheet.createRow(0);
+                    sheet.setColumnWidth(0, 15 * 256);
+                    sheet.setColumnWidth(1, 10 * 256);
+                    rowSheet.createCell(0).setCellValue("Категория");
+                    rowSheet.createCell(1).setCellValue("Затраты");
+                    JSONArray rows = mounthsExpenses.getValue();
+                    String category;
+                    for (int i = 0; i < rows.length(); i++) {
+                        JSONObject rowJSON = rows.getJSONObject(i);
+                        rowSheet = sheet.createRow(i+1);
+                        category = rowJSON.getString(CATEGORY);
+                        rowSheet.createCell(0).setCellValue(category.substring(0, 1).toUpperCase() + category.substring(1));
+                        rowSheet.createCell(1).setCellValue(rowJSON.getFloat(AMOUNT));
+                    }
+                    sheet.setAutoFilter(new CellRangeAddress(0, rows.length(), 0, 1));
+                    sheet.createFreezePane(0, 1);
+                }
+
+                File excel = new File("budget_%s.xlsx".formatted(LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))));
+                workbook.write(new FileOutputStream(excel));
+                sendDocument(fromId, excel);
+            }
+        } catch (Exception e) {
+
+        }
+
+    }
+
+    private void sendDocument(String chatId, File document) {
         SendDocument sendDocument = new SendDocument();
-        sendDocument.setChatId(chat_id);
+        sendDocument.setChatId(chatId);
         sendDocument.setDocument(new InputFile(document));
 
         try {

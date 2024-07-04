@@ -7,6 +7,7 @@ import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +40,7 @@ public class BudgetDB {
         }
     }
 
-    public Map<String, String> insertExpense(Map<String, String> expense, int user_id, String rawText) {
+    public Map<String, String> insertExpense(Map<String, String> expense, int userId, String rawText) {
         try {
             int amount = Integer.parseInt(expense.get("amount"));
             Map<String, String> category = getCategory(expense.get("category"));
@@ -47,7 +48,7 @@ public class BudgetDB {
                     "VALUES (?, ?, ?, ?, ?);";
             PreparedStatement preparedStatement = conn.prepareStatement(sql);
             preparedStatement.setInt(1, amount);
-            preparedStatement.setInt(2, user_id);
+            preparedStatement.setInt(2, userId);
             preparedStatement.setString(3,getDataString(LocalDateTime.now()));
 
             preparedStatement.setString(4, category.get("codename"));
@@ -59,13 +60,12 @@ public class BudgetDB {
         } catch (SQLException e) {
             logger.log(Level.SEVERE, e.getMessage(), e);
         }
-        return null;
+        return Collections.emptyMap();
     }
 
-    public void deleteExpense(int row_id) {
-        try {
-            var stmt = conn.prepareStatement("DELETE FROM expense where id=?");
-            stmt.setInt(1, row_id);
+    public void deleteExpense(int rowId) {
+        try (var stmt = conn.prepareStatement("DELETE FROM expense where id=?")) {
+            stmt.setInt(1, rowId);
             stmt.executeUpdate();
         } catch (SQLException e) {
             logger.log(Level.SEVERE, e.getMessage(), e);
@@ -102,6 +102,20 @@ public class BudgetDB {
         return result;
     }
 
+    private List<String> getMounths() {
+        ArrayList<String> result = new ArrayList<>();
+        String query = "SELECT DISTINCT strftime('%m.%Y', created) as month_year FROM expense;";
+        try (var stmt = conn.createStatement()) {
+            var rs = stmt.executeQuery(query);
+            while (rs.next()) {
+                result.add(rs.getString("month_year"));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
     public String getAllCategories() {
         StringBuilder result = new StringBuilder();
         try {
@@ -124,16 +138,39 @@ public class BudgetDB {
         return result.toString();
     }
 
+    public Map<String, JSONArray> getAllExpenses() {
+        Map<String, JSONArray> result = new HashMap<>();
+
+        List<String> mounths = getMounths();
+        mounths.forEach(mounth -> {
+            String query = "SELECT c.name, e.amount FROM expense e LEFT JOIN category c ON c.codename=e.category_codename " +
+                    "WHERE strftime('%m.%Y', created) = '" + mounth + "';";
+            try (var stmt = conn.createStatement()) {
+                var rs = stmt.executeQuery(query);
+                JSONArray rows = new JSONArray();
+                while (rs.next()) {
+                    JSONObject row = new JSONObject();
+                    row.put("category", rs.getString("name"));
+                    row.put("amount", rs.getFloat("amount"));
+                    rows.put(row);
+                }
+                result.put(mounth, rows);
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        return result;
+    }
+
     public String getLastExpenses() {
         StringBuilder result = new StringBuilder();
-        try {
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery(
-                    "SELECT e.id, e.amount, c.name " +
-                    "FROM expense e LEFT JOIN category c " +
-                    "ON c.codename=e.category_codename " +
-                    "ORDER BY created DESC LIMIT 10;"
-            );
+        String query = "SELECT e.id, e.amount, c.name " +
+                "FROM expense e LEFT JOIN category c " +
+                "ON c.codename=e.category_codename " +
+                "ORDER BY created DESC LIMIT 10;";
+        try (var stmt = conn.createStatement()) {
+            var rs = stmt.executeQuery(query);
             while (rs.next()) {
                 result
                         .append("- ")
@@ -188,8 +225,8 @@ public class BudgetDB {
                 "WHERE date(created)>=date('now', 'start of month')" +
                 "GROUP BY category_codename " +
                 "ORDER BY sum DESC;";
-        try {
-            var rs = conn.createStatement().executeQuery(query);
+        try (var stmt = conn.createStatement()) {
+            var rs = stmt.executeQuery(query);
             while (rs.next()) {
                 JSONObject row = new JSONObject();
                 row.put("name", rs.getString("name"));
