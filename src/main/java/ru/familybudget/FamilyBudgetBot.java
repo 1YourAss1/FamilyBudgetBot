@@ -27,12 +27,12 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -40,6 +40,7 @@ import java.util.regex.Pattern;
 
 public class FamilyBudgetBot extends TelegramLongPollingBot {
     Logger logger = Logger.getLogger(FamilyBudgetBot.class.getName());
+    private SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy");
     private static final String CATEGORY = "category";
     private static final String AMOUNT = "amount";
     private final String botUsername;
@@ -114,32 +115,41 @@ public class FamilyBudgetBot extends TelegramLongPollingBot {
     }
 
     private void writeData(String fromId, String text) {
-        Map<String, String> expense = parseMessage(text);
-        if (!expense.isEmpty()) {
-            expense = budgetDB.insertExpense(expense, Integer.parseInt(fromId), text);
-            if (expense != null) {
+        Expense expense = parseMessage(text);
+        if (expense != null) {
+            Map<String, String> insertResult = budgetDB.insertExpense(expense, Integer.parseInt(fromId), text);
+            if (!insertResult.isEmpty()) {
                 for (String user_id : userIdArray) {
                     sendMessage(user_id,
-                            "Добавлен расход: " + expense.get("amount") + " руб. на " + expense.get(CATEGORY)
-                                    + "\nРасходы сегодня: " + budgetDB.getTodaySum() + " руб.");
+                            "Добавлен расход: " + insertResult.get("amount") + " руб. на " + insertResult.get("category") + " от " + insertResult.get("date"));
                 }
             }
         } else {
-            sendMessage(fromId, "Неверный формат. Пример нужного формата: \n1000 продукты");
+            sendMessage(fromId, "Неверный формат. Пример нужного формата: \n1000 продукты 01.01.1997");
         }
     }
 
-    private Map<String, String> parseMessage(String text) {
-        Map<String, String> result = new HashMap<>();
-        Matcher matcher = Pattern.compile("(\\d+)(.*)").matcher(text);
-        if (matcher.find() && Integer.parseInt(matcher.group(1).trim()) > 0) {
-            result.put("amount", matcher.group(1).trim());
-            if (!matcher.group(2).trim().isEmpty()) {
-                result.put(CATEGORY, matcher.group(2).trim());
+    private Expense parseMessage(String text) {
+        Expense result = new Expense();
+        Matcher matcher = Pattern.compile("^(\\d+)\\s*(.*?)\\s*(\\d{2}\\.\\d{2}\\.\\d{4})?$").matcher(text);
+        if (matcher.find()) {
+            if (Integer.parseInt(matcher.group(1)) > 0) {
+                result.setAmount(Integer.parseInt(matcher.group(1)));
+                if (matcher.group(2) != null) {
+                    result.setCategory(matcher.group(2));
+                }
+                if (matcher.group(3) != null) {
+                    try {
+                        result.setDate(LocalDateTime.of(LocalDate.parse(matcher.group(3), DateTimeFormatter.ofPattern("dd.MM.yyyy")), LocalTime.now()));
+                    } catch (Exception e) {
+                        return null;
+                    }
+                }
             } else {
-                result.put(CATEGORY, "");
+                return null;
             }
-            return result;
+        } else {
+            return null;
         }
         return result;
     }

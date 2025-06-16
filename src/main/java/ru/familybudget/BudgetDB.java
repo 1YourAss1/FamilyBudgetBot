@@ -40,27 +40,28 @@ public class BudgetDB {
         }
     }
 
-    public Map<String, String> insertExpense(Map<String, String> expense, int userId, String rawText) {
+    public Map<String, String> insertExpense(Expense expense, int userId, String rawText) {
+        Map<String, String> result = new HashMap<>();
         try {
-            int amount = Integer.parseInt(expense.get("amount"));
-            Map<String, String> category = getCategory(expense.get("category"));
+            int amount = expense.getAmount();
+            Map<String, String> category = getCategory(expense.getCategory());
             String sql = "INSERT INTO expense (amount, user_id, created, category_codename, raw_text) " +
                     "VALUES (?, ?, ?, ?, ?);";
             PreparedStatement preparedStatement = conn.prepareStatement(sql);
             preparedStatement.setInt(1, amount);
             preparedStatement.setInt(2, userId);
-            preparedStatement.setString(3,getDataString(LocalDateTime.now()));
+            preparedStatement.setString(3, getDataString(expense.getDate()));
 
             preparedStatement.setString(4, category.get("codename"));
             preparedStatement.setString(5, rawText);
             preparedStatement.executeUpdate();
-            expense.put("amount", String.valueOf(amount));
-            expense.put("category", category.get("name"));
-            return expense;
+            result.put("amount", String.valueOf(amount));
+            result.put("category", category.get("name"));
+            result.put("date", getDataString(expense.getDate()));
         } catch (SQLException e) {
             logger.log(Level.SEVERE, e.getMessage(), e);
         }
-        return Collections.emptyMap();
+        return result;
     }
 
     public void deleteExpense(int rowId) {
@@ -165,10 +166,10 @@ public class BudgetDB {
 
     public String getLastExpenses() {
         StringBuilder result = new StringBuilder();
-        String query = "SELECT e.id, e.amount, c.name " +
+        String query = "SELECT e.id, e.amount, e.created ,c.name " +
                 "FROM expense e LEFT JOIN category c " +
                 "ON c.codename=e.category_codename " +
-                "ORDER BY created DESC LIMIT 10;";
+                "ORDER BY id DESC LIMIT 10;";
         try (var stmt = conn.createStatement()) {
             var rs = stmt.executeQuery(query);
             while (rs.next()) {
@@ -177,6 +178,8 @@ public class BudgetDB {
                         .append(rs.getString("amount"))
                         .append(" руб. на ")
                         .append(rs.getString("name"))
+                        .append(" от ")
+                        .append(rs.getString("created"))
                         .append(" /del").append(rs.getString("id"))
                         .append("\n");
             }
